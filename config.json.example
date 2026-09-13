@@ -1,0 +1,31 @@
+{
+  "//": "Copy to config.json and edit. config.json is gitignored because auth.keys are real secrets.",
+  "listenHost": "0.0.0.0",
+  "listenPort": 11434,
+  "upstream": "http://127.0.0.1:11434",
+  "apiKey": "",
+  "numCtx": 8192,
+  "logging": {
+    "mongo": {
+      "enabled": false,
+      "uri": "mongodb://127.0.0.1:27017",
+      "db": "chatbot",
+      "collection": "ollamaProxyRequests"
+    }
+  },
+  "//models": "alias shown to clients -> real model name on the upstream Ollama. Only these are reachable; anything else 404s. NOTE: every key here becomes a live alias, so do not put comments inside this object.",
+  "models": {
+    "some-alias:latest": "some-real-model:latest",
+    "another-alias:7b": "another-real-model:7b"
+  },
+  "auth": {
+    "//mode": "off = no auth | public-only = internet clients need a key, loopback/LAN/tailnet pass | always = every client needs a key (breaks the ollama CLI, which cannot send headers)",
+    "mode": "off",
+    "trustTailnet": false,
+    "//keys": "One key per app, so each request is logged with its authApp name. Generate with: node -e \"console.log('opk_'+require('crypto').randomBytes(24).toString('base64url'))\"",
+    "keys": {
+      "app1": "REPLACE_WITH_opk_..._secret",
+      "app2": "REPLACE_WITH_opk_..._secret"
+    }
+  }
+}

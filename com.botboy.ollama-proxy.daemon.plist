@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.botboy.ollama-proxy — system LaunchDaemon: starts at BOOT, no login required.
+
+  Source of truth. Install with ~/.ollama-proxy/install-daemon.sh (needs sudo),
+  which copies this file to /Library/LaunchDaemons/com.botboy.ollama-proxy.plist
+  (root:wheel 0644) and bootstraps it.
+
+  Runs node (via the ./node symlink into nvm) directly, so the process launchd
+  tracks is node itself and KeepAlive / kickstart behave normally. UserName
+  botboy keeps ~/.ollama-proxy (config, log) ownership intact.
+
+  The proxy binds 0.0.0.0:11434. Ollama stays bound to 127.0.0.1:11434; the
+  kernel prefers the loopback-specific socket for 127.0.0.1 traffic, so local
+  clients still reach Ollama directly while LAN clients reach the proxy. The
+  wildcard bind also removes the old EADDRNOTAVAIL boot race with DHCP.
+
+  After editing THIS file, re-run install-daemon.sh; kickstart alone will not
+  pick up plist changes.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.botboy.ollama-proxy</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/botboy/.ollama-proxy/node</string>
+        <string>/Users/botboy/.ollama-proxy/proxy.js</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/botboy/.ollama-proxy</string>
+    <key>UserName</key>
+    <string>botboy</string>
+    <key>GroupName</key>
+    <string>staff</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/botboy/.ollama-proxy/proxy.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/botboy/Library/Logs/ollama-proxy.err.log</string>
+</dict>
+</plist>

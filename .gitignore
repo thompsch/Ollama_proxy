@@ -1,0 +1,24 @@
+# --- SECRETS: never commit ---------------------------------------------------
+# config.json holds real API keys that grant access to a port-forwarded,
+# internet-reachable Ollama. Commit config.json.example instead.
+config.json
+# Timestamped backups made before risky config edits — these also contain keys.
+config.json.bak.*
+config.json.bak
+*.bak
+*.bak.*
+
+# --- Runtime output ----------------------------------------------------------
+# proxy.log records client IPs, user-agents and request bodies.
+proxy.log
+*.log
+
+# --- Machine-specific / regenerable -----------------------------------------
+# Symlink to this host's nvm node binary; install-daemon.sh recreates it.
+# Anchored to the repo root so it cannot shadow an unrelated path.
+/node
+# Reinstall with: npm ci   (mongodb is the only dependency)
+node_modules/
+
+# --- OS noise ----------------------------------------------------------------
+.DS_Store
