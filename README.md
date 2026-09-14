@@ -65,8 +65,12 @@ plist changes.
 |---|---|---|
 | `127.0.0.1:11434` | Real Ollama (all 12 models) | Only this Mac |
 | `100.x.y.z:11434` (`<machine>.<tailnet>.ts.net`) | ollama-proxy (aliases only) | **Tailnet peers only** — encrypted, keyless |
-| `*:11434` (any other local address, e.g. `192.168.0.100`) | ollama-proxy (aliases only) | The whole network |
-| `<WAN-IP>:11434` (router forward) | ollama-proxy (aliases only) | The internet — **API key required** |
+| `*:11434` (any other local address, e.g. `192.168.0.100`) | ollama-proxy (aliases only) | The whole local network |
+
+> **The router's `11434` port-forward was REMOVED on 2026-09-14.** The proxy is no
+> longer reachable from the public internet. It binds `0.0.0.0:11434` (so it still
+> answers on LAN + tailnet), but nothing on the WAN points at it. Port `88`
+> (the chatbot's forward) remains open.
 
 The proxy binds `0.0.0.0:11434`; Ollama stays bound to `127.0.0.1:11434`. The
 two coexist (specific loopback bind wins for loopback traffic), so local clients
@@ -79,20 +83,20 @@ the proxy for the wildcard bind.
 
 ## WAN availability
 
-Measured router port-forwards (verified 2026-09-13 from external check nodes):
+Measured router port-forwards (11434 verified closed 2026-09-14):
 
 | WAN port | Forwards to | Service | Status |
 |---|---|---|---|
-| `11434` | `192.168.0.100:11434` | **ollama-proxy** (this) | open, proxy answers |
+| `11434` | — (forward removed) | ollama-proxy | **CLOSED** — internet cannot reach it |
 | `88` | `192.168.0.100:80` | **chatbot** (`~/chatbot`) | open |
 | `80` | — | not forwarded | closed |
 
 - chatbot: `http://<WAN-IP>:88/` — note the port *translation*: WAN 88 lands on
   the chatbot's port 80. This is why `~/ca13b/server.js` uses `CHAT_PORT = 88`
   while the chatbot itself listens on 80 and nothing listens on 88 locally.
-- proxy: `http://<WAN-IP>:11434` (exposed models only; real Ollama on
-  `127.0.0.1:11434` is NOT reachable — the proxy owns the LAN address that the
-  forward targets)
+- proxy: **no public address**. It serves LAN (`192.168.0.100:11434`) and
+  tailnet (`<machine>.<tailnet>.ts.net:11434`) clients only. Real Ollama stays
+  bound to `127.0.0.1:11434` and is never reachable by proxy clients either.
 
 **The ollama-proxy has never listened on port 88.** Its bind history in
 `proxy.log` is only `0.0.0.0:11434` (current), `192.168.0.100:11434` (the old
@@ -100,36 +104,25 @@ pre-wildcard config that hit the `EADDRNOTAVAIL` DHCP race) and `0.0.0.0:11435`
 (`proxy.js`'s fallback default when `listenPort` is missing from config.json).
 Port 88 belongs to the chatbot's forward, not to Ollama.
 
-**Security notes for WAN exposure:**
-- **Authentication IS enabled** — `auth.mode: "public-only"` with four per-app
-  keys (`cline`, `codex`, `agent3`, `agent4`). Internet clients must present a
-  key (`Authorization: Bearer <secret>` or `X-Api-Key: <secret>`); loopback and
-  LAN clients pass freely. Verified 2026-09-13 from external nodes: no key →
-  **401**, while loopback/LAN stay 200. See "Authentication" below for the full
-  mode table and key management.
-- ⚠️ **You CANNOT test WAN reachability from inside this LAN.** This router does
-  no NAT hairpin/reflection, so `curl http://<WAN-IP>:11434/...` from the Mac
-  (or any LAN host) **times out even when the forward is healthy**. Proof: the
-  same inside-out test also times out on WAN port 88, which is known-good
-  (`https://ca13b.com/chat` proxies to `<WAN-IP>:88` from Render and returns
-  200). Test from OUTSIDE instead — phone on cellular, a VPS, or an external
-  checker:
-
-  ```bash
-  # TCP reachability from outside (also reports a non-forwarded port as false)
-  curl -s https://ifconfig.co/port/11434/
-  # real HTTP check from 3 external nodes; a healthy proxy returns
-  # 200 for /api/version and 403 for / (real Ollama returns 200 for /)
-  curl -s -H 'Accept: application/json' \
-    'https://check-host.net/check-http?host=http%3A%2F%2F<WAN-IP>%3A11434%2Fapi%2Fversion&max_nodes=3'
-  ```
-
-  A 403 on `/` is the proxy's signature (`BLOCK GET / (not allowed)` also
-  appears in `proxy.log`), which confirms the forward reaches the proxy rather
-  than real Ollama.
+**Security notes for network exposure:**
+- **The internet cannot reach the proxy** (router `11434` forward removed
+  2026-09-14), so the WAN attack surface is gone entirely. `auth.mode:
+  "public-only"` with per-app keys still exists and still runs, but with no
+  public forward the keys now only matter for **LAN hygiene/attribution** — the
+  tailnet and LAN are trusted scopes (keyless by design). If you ever re-open a
+  public forward, the keys immediately become load-bearing again. See
+  "Authentication" below for the full mode table and key management.
+- Tailnet traffic is device-authenticated + encrypted end-to-end; LAN traffic
+  is not encrypted (fine for a home network).
+- The proxy is no longer WAN-exposed, so the old "test your public port from
+  outside" instructions no longer apply — there is no public port to test. LAN
+  and tailnet paths work from inside the network as normal. (For reference: this
+  router does no NAT hairpin, so a `curl http://<WAN-IP>:11434/...` from inside
+  the LAN would time out even if a forward existed — don't use that as a health
+  check for the proxy.)
 - The whole setup assumes the Mac keeps the IP 192.168.0.100 — set a DHCP
-  reservation on the router; if the IP changes, both the proxy binding and the
-  port-forward break.
+  reservation on the router; if the IP changes, the proxy's LAN and tailnet
+  references and the chatbot's port-88 forward break.
 
 ## Remote client usage
 
@@ -180,9 +173,13 @@ no restart needed:
 
 ## Authentication / locking down who can use it
 
-**This install is currently locked down** with `auth.mode: "public-only"` and four
-per-app keys. Internet clients must present a key; loopback and LAN clients pass
-freely.
+**The internet cannot reach the proxy** (router `11434` forward removed
+2026-09-14), so the keys below are no longer load-bearing for security — they're
+now optional **LAN attribution**. `auth.mode: "public-only"` remains set, which
+is correct: it keeps every local/tailnet tool working with zero config and
+would instantly re-lock the door if a public forward were ever re-added. The
+keys still exist and agents may present them; it just no longer matters for
+access on the tailnet/LAN (both trusted scopes).
 
 ```jsonc
 "auth": {
@@ -197,19 +194,20 @@ freely.
 ```
 
 **Configuring a code agent to use this proxy:** point its Ollama base URL at
-`http://<machine>.<tailnet>.ts.net:11434` (best — see *Tailscale* below), or
-`http://192.168.0.100:11434` on the LAN, or `http://<WAN-IP>:11434` from the
-internet. Put one key in its API-key field unless the agent is on the tailnet.
-Most agents expose an OpenAI-compatible setting:
+`http://<machine>.<tailnet>.ts.net:11434` (recommended — see *Tailscale* below)
+or `http://192.168.0.100:11434` on the LAN. **There is no public (WAN) address**
+— the router forward was removed, so internet agents must use Tailscale. No key
+is required on the tailnet or LAN, but you may add one for `authApp`
+attribution in Mongo. Most agents expose an OpenAI-compatible setting:
 
 ```sh
-# env-var style (works for most CLIs / SDKs)
-export OLLAMA_HOST=http://<WAN-IP>:11434
-export OPENAI_API_KEY=opk_...          # the key for that agent
-export OPENAI_BASE_URL=http://<WAN-IP>:11434/v1
+# env-var style (works for most CLIs / SDKs) — tailnet path
+export OLLAMA_HOST=http://<machine>.<tailnet>.ts.net:11434
+export OPENAI_BASE_URL=http://<machine>.<tailnet>.ts.net:11434/v1
+# OPENAI_API_KEY is optional on the tailnet; add it if you want attribution
 
-# curl, to confirm the agent's key works
-curl -s http://<WAN-IP>:11434/api/tags -H "Authorization: Bearer opk_..."
+# LAN alternative (no key needed either)
+export OPENAI_BASE_URL=http://192.168.0.100:11434/v1
 ```
 
 Give each agent **its own key** — that is what makes `authApp` attribution in
@@ -224,7 +222,7 @@ node -e 'const c=require(process.env.HOME+"/.ollama-proxy/config.json");for(cons
 | mode | Who needs a key | Use when |
 |---|---|---|
 | `off` | nobody | trusted LAN only, port NOT forwarded |
-| `public-only` | internet clients only | **current** — locks the WAN door, keeps local tooling keyless |
+| `public-only` | internet clients only | **current** — internet is closed at the router anyway; keys now just do LAN attribution |
 | `always` | everyone | maximum strictness; every client must carry a key |
 
 **Correction to an earlier claim in this file:** the ollama CLI *can* send a key.
