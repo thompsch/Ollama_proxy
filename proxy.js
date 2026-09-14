@@ -550,6 +550,11 @@ const server = http.createServer((req, res) => {
     case '/v1/chat/completions':
     case '/v1/completions':
     case '/v1/embeddings':
+    // Anthropic-compatible endpoint (Claude Code, Claude Desktop, etc.).
+    // Ollama 0.33 has native /v1/messages support (verified: 200). The model
+    // field lives in bodyObj.model, so handleModelEndpoint rewrites it exactly
+    // like the OpenAI routes and the modelRewriter is format-agnostic.
+    case '/v1/messages':
       return handleModelEndpoint(req, res, {}, rec);
 
     default:
